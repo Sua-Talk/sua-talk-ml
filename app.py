@@ -22,11 +22,26 @@ MODEL_PATH = os.path.join("classification_model", "classifier_model.h5")
 # Load model
 model = tf.keras.models.load_model(MODEL_PATH)
 
+def trim_or_pad(audio, sr, target_duration=6.0):
+            target_length = int(sr * target_duration)
+            if len(audio) > target_length:
+                start = (len(audio) - target_length) // 2
+                audio = audio[start:start + target_length]
+            elif len(audio) < target_length:
+                pad_length = target_length - len(audio)
+                pad_left = pad_length // 2
+                pad_right = pad_length - pad_left
+                audio = np.pad(audio, (pad_left, pad_right), mode='constant')
+            return audio
+        
+
 # Fungsi ekstraksi fitur audio (sama persis dengan di notebook)
 def extract_features(file_path):
     try:
+        
         y, sr = librosa.load(file_path, sr=SAMPLE_RATE)
-
+        y= trim_or_pad(y, sr=SAMPLE_RATE)
+                
         mfcc = np.mean(librosa.feature.mfcc(
             y=y, sr=sr, n_mfcc=N_MFCC, n_fft=N_FFT,
             hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window='hann'
