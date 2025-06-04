@@ -22,6 +22,16 @@ CORS_ORIGIN = os.getenv('CORS_ORIGIN', '*')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'info')
 ALLOWED_AUDIO_FORMATS = os.getenv('ALLOWED_AUDIO_FORMATS', 'wav,mp3,m4a,flac').split(',')
 
+# Audio processing constants (matching your working code)
+SAMPLE_RATE = 16000
+N_FFT = 1024
+HOP_LENGTH = 160
+WIN_LENGTH = 400
+N_MFCC = 13
+N_MELS = 128
+N_BANDS = 7
+FMIN = 100
+
 # Configure Flask app
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max-file-size
 
@@ -35,24 +45,54 @@ except Exception as e:
     model = None
     model_loaded_time = None
 
-# Define class labels based on the notebook
-CLASS_LABELS = ['belly_pain', 'burping', 'discomfort', 'hungry', 'tired']
+# Define class labels based on your working code
+CLASS_LABELS = ['burping', 'discomfort', 'belly_pain', 'hungry', 'tired']
 
-def extract_features(audio_file):
-    """Extract MFCC features from audio file"""
+def trim_or_pad(audio, sr, target_duration=6.0):
+    target_length = int(sr * target_duration)
+    if len(audio) > target_length:
+        start = (len(audio) - target_length) // 2
+        audio = audio[start:start + target_length]
+    elif len(audio) < target_length:
+        pad_length = target_length - len(audio)
+        pad_left = pad_length // 2
+        pad_right = pad_length - pad_left
+        audio = np.pad(audio, (pad_left, pad_right), mode='constant')
+    return audio
+
+def extract_features(file_path):
     try:
-        # Load audio file
-        y, sr = librosa.load(audio_file, sr=22050)
+        y, sr = librosa.load(file_path, sr=SAMPLE_RATE)
+        y = trim_or_pad(y, sr=SAMPLE_RATE)
         
-        # Extract MFCC features (13 coefficients as per the notebook)
-        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        
-        # Take mean across time dimension
-        mfccs_mean = np.mean(mfccs, axis=1)
-        
-        return mfccs_mean.reshape(1, -1)
+        mfcc = np.mean(librosa.feature.mfcc(
+            y=y, sr=sr, n_mfcc=N_MFCC, n_fft=N_FFT,
+            hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window='hann'
+        ).T, axis=0)
+
+        mel = np.mean(librosa.feature.melspectrogram(
+            y=y, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH,
+            win_length=WIN_LENGTH, window='hann', n_mels=N_MELS
+        ).T, axis=0)
+
+        stft = np.abs(librosa.stft(y))
+
+        chroma = np.mean(librosa.feature.chroma_stft(S=stft, y=y, sr=sr).T, axis=0)
+
+        contrast = np.mean(librosa.feature.spectral_contrast(
+            S=stft, y=y, sr=sr, n_fft=N_FFT,
+            hop_length=HOP_LENGTH, win_length=WIN_LENGTH,
+            n_bands=N_BANDS, fmin=FMIN
+        ).T, axis=0)
+
+        tonnetz = np.mean(librosa.feature.tonnetz(y=y, sr=sr).T, axis=0)
+
+        features = np.concatenate((mfcc, chroma, mel, contrast, tonnetz))
+        return features.reshape(1, -1)
+
     except Exception as e:
-        raise ValueError(f"Error processing audio file: {str(e)}")
+        print(f"Error in feature extraction: {e}")
+        return None
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -142,11 +182,16 @@ def predict():
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 503
     
-    # Check if file is present
-    if 'audio' not in request.files:
+    # Check if file is present (supporting both 'audio' and 'file' keys)
+    file = None
+    if 'audio' in request.files:
+        file = request.files['audio']
+    elif 'file' in request.files:
+        file = request.files['file']
+    
+    if not file:
         return jsonify({'error': 'No audio file provided'}), 400
     
-    file = request.files['audio']
     if file.filename == '':
         return jsonify({'error': 'No audio file selected'}), 400
     
@@ -157,39 +202,49 @@ def predict():
             'error': f'Unsupported audio format. Allowed: {", ".join(ALLOWED_AUDIO_FORMATS)}'
         }), 400
     
+    # Save file to temporary path (using your working approach)
+    temp_path = os.path.join(tempfile.gettempdir(), file.filename)
+    
     try:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
-            file.save(tmp_file.name)
-            
-            # Extract features
-            features = extract_features(tmp_file.name)
-            
-            # Make prediction
-            prediction = model.predict(features, verbose=0)
-            predicted_class_idx = np.argmax(prediction[0])
-            confidence = float(prediction[0][predicted_class_idx])
-            predicted_class = CLASS_LABELS[predicted_class_idx]
-            
-            # Clean up temporary file
-            os.unlink(tmp_file.name)
-            
-            return jsonify({
-                'prediction': predicted_class,
-                'confidence': confidence,
-                'all_predictions': {
-                    CLASS_LABELS[i]: float(prediction[0][i]) 
-                    for i in range(len(CLASS_LABELS))
-                }
-            })
-            
+        file.save(temp_path)
+        print(f"📦 Saved to temp: {temp_path}")
+        
+        # Extract features
+        features = extract_features(temp_path)
+        
+        if features is None:
+            return jsonify({'error': 'Feature extraction failed'}), 500
+        
+        # Make prediction
+        prediction = model.predict(features, verbose=0)
+        predicted_class_idx = int(np.argmax(prediction))
+        confidence = float(np.max(prediction))
+        predicted_class = CLASS_LABELS[predicted_class_idx]
+        
+        print(f"✅ Prediction success: {predicted_class} ({confidence})")
+        
+        return jsonify({
+            'prediction': predicted_class,
+            'confidence': confidence,
+            'all_predictions': {
+                CLASS_LABELS[i]: float(prediction[0][i]) 
+                for i in range(len(CLASS_LABELS))
+            },
+            'feature_shape': features.shape
+        })
+    
     except Exception as e:
-        # Clean up temporary file if it exists
-        try:
-            os.unlink(tmp_file.name)
-        except:
-            pass
-        return jsonify({'error': str(e)}), 500
+        print(f"❌ Prediction error: {e}")
+        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+    
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+                print(f"🗑️ Cleaned up temp file: {temp_path}")
+            except Exception as cleanup_error:
+                print(f"Failed to cleanup temp file: {cleanup_error}")
 
 @app.errorhandler(413)
 def too_large(e):
@@ -217,9 +272,10 @@ def after_request(response):
 if __name__ == '__main__':
     print(f"🚀 Starting SuaTalk ML API")
     print(f"🔧 Port: {PORT}")
-    print(f"🔧 Environment: {os.getenv('NODE_ENV', 'development')}")
+    print(f"🔧 Environment: {os.getenv('FLASK_ENV', 'development')}")
     print(f"🔧 Model: {MODEL_PATH}")
     print(f"🔧 CORS Origin: {CORS_ORIGIN}")
     print(f"🔧 Log Level: {LOG_LEVEL}")
+    print(f"🔧 Audio Config: SR={SAMPLE_RATE}, MFCC={N_MFCC}, FFT={N_FFT}, HOP={HOP_LENGTH}")
     
     app.run(host='0.0.0.0', port=PORT, debug=(LOG_LEVEL == 'debug'))
