@@ -2,12 +2,15 @@ import os
 import numpy as np
 import librosa
 import tensorflow as tf
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,render_template
 import soundfile as sf
 import tempfile
 from dotenv import load_dotenv
 from datetime import datetime
 import psutil
+
+from utils.ai_insights import generate_ai_insights
+from utils.calendar_utils import create_calendar_event
 
 # Load environment variables
 load_dotenv()
@@ -176,6 +179,26 @@ def get_classes():
         'total_classes': len(CLASS_LABELS)
     })
 
+# --- Database Helper ---
+def log_cry_event(predicted_label, confidence, timestamp):
+    conn = sqlite3.connect('database/cry_history.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS cry_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        label TEXT, confidence REAL, timestamp TEXT)''')
+    cursor.execute("INSERT INTO cry_events (label, confidence, timestamp) VALUES (?, ?, ?)",
+                   (predicted_label, confidence, timestamp))
+    conn.commit()
+    conn.close()
+
+def get_cry_history():
+    conn = sqlite3.connect('database/cry_history.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT label, confidence, timestamp FROM cry_events ORDER BY timestamp DESC LIMIT 100")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"label": r[0], "confidence": r[1], "timestamp": r[2]} for r in rows]
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """Predict infant cry classification"""
@@ -220,7 +243,10 @@ def predict():
             predicted_class_idx = int(np.argmax(prediction[0]))
             confidence = float(prediction[0][predicted_class_idx])
             predicted_class = CLASS_LABELS[predicted_class_idx]
-            
+
+            import datetime
+            log_cry_event(predicted_class, confidence, datetime.datetime.now().isoformat())
+
             return jsonify({
                 'prediction': predicted_class,
                 'confidence': confidence,
@@ -264,6 +290,22 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
+
+# --- Insights & Calendar Endpoint ---
+@app.route('/analyze-history', methods=['POST'])
+def analyze_history():
+    history_data = get_cry_history()
+    insights = generate_ai_insights(history_data)
+    # (Optional) create calendar event based on insights['next_feeding'] etc
+    create_calendar_event(insights)
+    return jsonify(insights)
+
+# --- Simple Dashboard ---
+@app.route('/')
+def dashboard():
+    history = get_cry_history()
+    insights = generate_ai_insights(history)
+    return render_template('dashboard.html', history=history, insights=insights)
 
 if __name__ == '__main__':
     print(f"🚀 Starting SuaTalk ML API")
