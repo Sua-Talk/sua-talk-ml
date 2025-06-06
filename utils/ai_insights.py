@@ -1,26 +1,20 @@
-import openai
-import json
-from openrouter import OpenRouter
-import os
+from openai import OpenAI
 
-# OpenRouter API initialization
-openrouter = OpenRouter(api_key=os.getenv('OPENROUTER_API_KEY'))
-
-def generate_ai_insights(history):
-    prompt = (
-        "Berikut adalah data histori tangisan bayi (label, confidence, timestamp):\n"
-        f"{history}\n"
-        "Buat insight singkat dalam format JSON dengan fields:\n"
-        "- next_feeding\n- sleep_time\n- pattern_analysis\n- recommendations\n"
+def generate_ai_insights(label, gender, age):
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key="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",
     )
 
-    response = openrouter.predict(
-        model="GPT-J", prompt=prompt, max_tokens=250
+    completion = client.chat.completions.create(
+        model="openai/gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": f"A {age}-month-old {gender} baby is crying because of {label}. Please provide brief action recommendations to help new parents. Make it in one paragraph, quick treatment"
+            }
+        ],
+        max_tokens=500
     )
-    
-    return {
-        "next_feeding": response['choices'][0]['text'],  # Example, adjust accordingly
-        "sleep_time": "9:00 AM",
-        "pattern_analysis": "Feeding occurs every 3 hours.",
-        "recommendations": "Try changing the milk formula."
-    }
+
+    return (completion.choices[0].message.content)
