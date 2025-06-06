@@ -202,49 +202,45 @@ def predict():
             'error': f'Unsupported audio format. Allowed: {", ".join(ALLOWED_AUDIO_FORMATS)}'
         }), 400
     
-    # Save file to temporary path (using your working approach)
-    temp_path = os.path.join(tempfile.gettempdir(), file.filename)
-    
+    tmp_file_path = None
     try:
-        file.save(temp_path)
-        print(f"📦 Saved to temp: {temp_path}")
-        
-        # Extract features
-        features = extract_features(temp_path)
-        
-        if features is None:
-            return jsonify({'error': 'Feature extraction failed'}), 500
-        
-        # Make prediction
-        prediction = model.predict(features, verbose=0)
-        predicted_class_idx = int(np.argmax(prediction))
-        confidence = float(np.max(prediction))
-        predicted_class = CLASS_LABELS[predicted_class_idx]
-        
-        print(f"✅ Prediction success: {predicted_class} ({confidence})")
-        
-        return jsonify({
-            'prediction': predicted_class,
-            'confidence': confidence,
-            'all_predictions': {
-                CLASS_LABELS[i]: float(prediction[0][i]) 
-                for i in range(len(CLASS_LABELS))
-            },
-            'feature_shape': features.shape
-        })
-    
+        # Save uploaded file temporarily using secure approach
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_ext}') as tmp_file:
+            tmp_file_path = tmp_file.name
+            file.save(tmp_file_path)
+            
+            # Extract features (with trim_or_pad preprocessing)
+            features = extract_features(tmp_file_path)
+            
+            if features is None:
+                return jsonify({'error': 'Feature extraction failed'}), 500
+            
+            # Make prediction
+            prediction = model.predict(features, verbose=0)
+            predicted_class_idx = int(np.argmax(prediction[0]))
+            confidence = float(prediction[0][predicted_class_idx])
+            predicted_class = CLASS_LABELS[predicted_class_idx]
+            
+            return jsonify({
+                'prediction': predicted_class,
+                'confidence': confidence,
+                'all_predictions': {
+                    CLASS_LABELS[i]: float(prediction[0][i]) 
+                    for i in range(len(CLASS_LABELS))
+                },
+                'feature_shape': features.shape
+            })
+            
     except Exception as e:
-        print(f"❌ Prediction error: {e}")
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
     
     finally:
         # Clean up temporary file
-        if os.path.exists(temp_path):
+        if tmp_file_path and os.path.exists(tmp_file_path):
             try:
-                os.remove(temp_path)
-                print(f"🗑️ Cleaned up temp file: {temp_path}")
-            except Exception as cleanup_error:
-                print(f"Failed to cleanup temp file: {cleanup_error}")
+                os.unlink(tmp_file_path)
+            except Exception:
+                pass  # Fail silently on cleanup errors
 
 @app.errorhandler(413)
 def too_large(e):
