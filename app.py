@@ -1,17 +1,16 @@
 import os
 import numpy as np
-import librosa
 import tensorflow as tf
 from flask import Flask, request, jsonify
-import soundfile as sf
 import tempfile
 from dotenv import load_dotenv
 from datetime import datetime
 import psutil
+from utils.ai_insights import generate
+from utils.preprocessing import *
 
 # Load environment variables
 load_dotenv()
-
 app = Flask(__name__)
 
 # Configuration from environment variables
@@ -21,16 +20,6 @@ MAX_REQUEST_SIZE = os.getenv('MAX_REQUEST_SIZE', '50MB')
 CORS_ORIGIN = os.getenv('CORS_ORIGIN', '*')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'info')
 ALLOWED_AUDIO_FORMATS = os.getenv('ALLOWED_AUDIO_FORMATS', 'wav,mp3,m4a,flac').split(',')
-
-# Audio processing constants (matching your working code)
-SAMPLE_RATE = 16000
-N_FFT = 1024
-HOP_LENGTH = 160
-WIN_LENGTH = 400
-N_MFCC = 13
-N_MELS = 128
-N_BANDS = 7
-FMIN = 100
 
 # Configure Flask app
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max-file-size
@@ -47,52 +36,6 @@ except Exception as e:
 
 # Define class labels based on your working code
 CLASS_LABELS = ['burping', 'discomfort', 'belly_pain', 'hungry', 'tired']
-
-def trim_or_pad(audio, sr, target_duration=6.0):
-    target_length = int(sr * target_duration)
-    if len(audio) > target_length:
-        start = (len(audio) - target_length) // 2
-        audio = audio[start:start + target_length]
-    elif len(audio) < target_length:
-        pad_length = target_length - len(audio)
-        pad_left = pad_length // 2
-        pad_right = pad_length - pad_left
-        audio = np.pad(audio, (pad_left, pad_right), mode='constant')
-    return audio
-
-def extract_features(file_path):
-    try:
-        y, sr = librosa.load(file_path, sr=SAMPLE_RATE)
-        y = trim_or_pad(y, sr=SAMPLE_RATE)
-        
-        mfcc = np.mean(librosa.feature.mfcc(
-            y=y, sr=sr, n_mfcc=N_MFCC, n_fft=N_FFT,
-            hop_length=HOP_LENGTH, win_length=WIN_LENGTH, window='hann'
-        ).T, axis=0)
-
-        mel = np.mean(librosa.feature.melspectrogram(
-            y=y, sr=sr, n_fft=N_FFT, hop_length=HOP_LENGTH,
-            win_length=WIN_LENGTH, window='hann', n_mels=N_MELS
-        ).T, axis=0)
-
-        stft = np.abs(librosa.stft(y))
-
-        chroma = np.mean(librosa.feature.chroma_stft(S=stft, y=y, sr=sr).T, axis=0)
-
-        contrast = np.mean(librosa.feature.spectral_contrast(
-            S=stft, y=y, sr=sr, n_fft=N_FFT,
-            hop_length=HOP_LENGTH, win_length=WIN_LENGTH,
-            n_bands=N_BANDS, fmin=FMIN
-        ).T, axis=0)
-
-        tonnetz = np.mean(librosa.feature.tonnetz(y=y, sr=sr).T, axis=0)
-
-        features = np.concatenate((mfcc, chroma, mel, contrast, tonnetz))
-        return features.reshape(1, -1)
-
-    except Exception as e:
-        print(f"Error in feature extraction: {e}")
-        return None
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -176,6 +119,26 @@ def get_classes():
         'total_classes': len(CLASS_LABELS)
     })
 
+# # --- Database Helper ---
+# def log_cry_event(predicted_label, confidence, timestamp):
+#     conn = sqlite3.connect('database/cry_history.db')
+#     cursor = conn.cursor()
+#     cursor.execute('''CREATE TABLE IF NOT EXISTS cry_events (
+#         id INTEGER PRIMARY KEY AUTOINCREMENT,
+#         label TEXT, confidence REAL, timestamp TEXT)''')
+#     cursor.execute("INSERT INTO cry_events (label, confidence, timestamp) VALUES (?, ?, ?)",
+#                    (predicted_label, confidence, timestamp))
+#     conn.commit()
+#     conn.close()
+
+# def get_cry_history():
+#     conn = sqlite3.connect('database/cry_history.db')
+#     cursor = conn.cursor()
+#     cursor.execute("SELECT label, confidence, timestamp FROM cry_events ORDER BY timestamp DESC LIMIT 100")
+#     rows = cursor.fetchall()
+#     conn.close()
+#     return [{"label": r[0], "confidence": r[1], "timestamp": r[2]} for r in rows]
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """Predict infant cry classification"""
@@ -215,11 +178,19 @@ def predict():
             if features is None:
                 return jsonify({'error': 'Feature extraction failed'}), 500
             
-            # Make prediction
             prediction = model.predict(features, verbose=0)
             predicted_class_idx = int(np.argmax(prediction[0]))
             confidence = float(prediction[0][predicted_class_idx])
             predicted_class = CLASS_LABELS[predicted_class_idx]
+
+            # log_cry_event(predicted_class, confidence, datetime.datetime.now().isoformat())
+            baby_gender='female'
+            baby_age='3 months'
+            ai_recommendation = generate(
+                label=predicted_class,
+                gender=baby_gender,
+                age=baby_age
+            )
             
             return jsonify({
                 'prediction': predicted_class,
@@ -228,7 +199,8 @@ def predict():
                     CLASS_LABELS[i]: float(prediction[0][i]) 
                     for i in range(len(CLASS_LABELS))
                 },
-                'feature_shape': features.shape
+                'feature_shape': features.shape,
+                'ai-recommendation' : ai_recommendation
             })
             
     except Exception as e:
@@ -264,6 +236,13 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
+
+# # --- Simple Dashboard ---
+# @app.route('/')
+# def dashboard():
+#     history = get_cry_history()
+#     insights = generate_ai_insights(history)
+#     return render_template('dashboard.html', history=history, insights=insights)
 
 if __name__ == '__main__':
     print(f"🚀 Starting SuaTalk ML API")
