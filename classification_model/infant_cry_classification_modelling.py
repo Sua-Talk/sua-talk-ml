@@ -39,6 +39,11 @@ import seaborn as sns
 from sklearn.metrics import roc_curve, auc
 from sklearn.preprocessing import label_binarize
 
+os.environ["PYTHONHASHSEED"] = str(42)
+os.environ["TF_DETERMINISTIC_OPS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 
 
 np.random.seed(42)
@@ -66,6 +71,7 @@ def load_audio(file_path, sr=SAMPLE_RATE):
     """Loads an audio file."""
     audio, sr = librosa.load(file_path, sr=sr)
     return audio, sr
+
 
 def save_audio(audio, output_file_path, sr = SAMPLE_RATE):
     """Saves an audio file."""
@@ -138,6 +144,7 @@ for label in os.listdir(base_path):
         print(f"{label}: {num_files} files")
     else:
         print(f"{label} is a file, not a directory")
+
 
 """## Data Resizing"""
 
@@ -256,7 +263,7 @@ model_ANN.compile(optimizer='adam',
 
 model_ANN.summary()
 
-history_ANN=model_ANN.fit(X_train, y_train, epochs=100, batch_size=32, validation_split=0.1)
+history_ANN=model_ANN.fit(X_train, y_train, epochs=100, batch_size=32, validation_split=0.1, shuffle=False)
 
 y_pred=np.argmax(model_ANN.predict(X_test), axis=1)
 y_true=np.argmax(y_test, axis=1)
