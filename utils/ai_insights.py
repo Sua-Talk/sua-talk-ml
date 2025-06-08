@@ -1,15 +1,14 @@
 from google import genai
 from google.genai import types
 
-def generate(label, age, gender):
+def generate(label, age, history_summary):
   client = genai.Client(
       vertexai=True,
       project="330163298455",
       location="us-central1",
   )
-
-  msg1_text1 = types.Part.from_text(text=""f"A {age}-old {gender} baby is crying because of {label}. Please provide brief action recommendations to help new parents. Make it in one paragraph, quick treatment""")
-
+  prompt_text=""f"Anda adalah asisten AI yang ahli dalam memberikan rekomendasi perawatan bayi berdasarkan penyebab tangisan. Bayi menangis adalah hal yang normal, dan setiap tangisan memiliki arti. Tujuan Anda adalah memberikan rekomendasi yang lembut dan efektif kepada orang tua baru.Penyebab tangisan bayi saat ini terklasifikasi sebagai: {label}.Usia bayi saat ini adalah: {age}.Berdasarkan riwayat tangisan sebelumnya:{history_summary}.Berdasarkan informasi di atas, berikan beberapa rekomendasi treatment yang bisa dilakukan orang tua baru untuk mengatasi tangisan ini. Prioritaskan rekomendasi yang paling umum dan relevan dengan pola yang teridentifikasi. Sajikan rekomendasi dan penjelasannya dalam bentuk satu paragraf singkat"""
+  msg1_text1 = types.Part.from_text(text=prompt_text)
   model = "projects/330163298455/locations/us-central1/endpoints/598359725393838080"
   contents = [
     types.Content(

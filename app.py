@@ -35,7 +35,7 @@ except Exception as e:
     model_loaded_time = None
 
 # Define class labels based on your working code
-CLASS_LABELS = ['burping', 'discomfort', 'belly_pain', 'hungry', 'tired']
+CLASS_LABELS = ['sakit perut', 'kembung', 'tidak nyaman', 'lapar', 'lelah']
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -184,12 +184,12 @@ def predict():
             predicted_class = CLASS_LABELS[predicted_class_idx]
 
             # log_cry_event(predicted_class, confidence, datetime.datetime.now().isoformat())
-            baby_gender='female'
-            baby_age='3 months'
+            baby_age='3 bulan'
+            summary_dummy=f' Untuk penyebab {predicted_class} , riwayat menunjukkan bahwa ini paling sering terjadi antara pukul **18:00 - 21:00** (terjadi 35 kali). Tangisan saat ini terjadi pada pukul 19:30, yang berada dalam rentang waktu yang sering terjadi.'
             ai_recommendation = generate(
                 label=predicted_class,
-                gender=baby_gender,
-                age=baby_age
+                age=baby_age,
+                history_summary = summary_dummy
             )
             
             return jsonify({
