@@ -123,29 +123,7 @@ def get_classes():
     })
 
 @app.route('/predict', methods=['POST'])
-def calculate_baby_age(date_of_birth_str):
-    # Format date_of_birth_str: "YYYY-MM-DD"
-    dob = datetime.strptime(date_of_birth_str, "%Y-%m-%d")
-    today = datetime.today()
-    delta = today - dob
-    # Hitung umur dalam bulan dan hari
-    months = delta.days // 30
-    days = delta.days % 30
-    if months > 0:
-        return f"{months} bulan {days} hari"
-    else:
-        return f"{days} hari"
-    
-def get_baby_profile(baby_id):
-    url = f"https://api.suatalk.site/babies/{baby_id}"
-    try:
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-        if data.get("success") and data.get("data"):
-            return data["data"]
-        return None
-    except Exception:
-        return None
+
     
 def predict():
     """Predict infant cry classification"""
