@@ -1,0 +1,16 @@
+Flask==3.1.1
+Werkzeug==3.1.3
+tensorflow==2.19.0
+keras==3.10.0
+numpy==1.26.4
+python-dotenv==1.1.0
+requests==2.32.3
+soundfile==0.13.1
+librosa==0.11.0
+audioread==3.0.1
+soxr==0.5.0.post1
+scipy==1.13.1
+gunicorn
+psutil
+google-genai
+
