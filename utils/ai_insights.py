@@ -1,15 +1,40 @@
 from google import genai
 from google.genai import types
+import os
+import tempfile
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GOOGLE_CLOUD_PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT')
+GOOGLE_CLOUD_REGION = os.getenv('GOOGLE_CLOUD_REGION')
+VERTEX_AI_MODEL_ENDPOINT = os.getenv('VERTEX_AI_MODEL_ENDPOINT')
+
+def _setup_google_credentials():
+    service_account_info_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    if service_account_info_json:
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_key_file:
+                temp_key_file.write(service_account_info_json)
+                temp_key_file_path = temp_key_file.name
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_key_file_path
+            print(f"✅ Kredensial Akun Layanan dimuat dari variabel lingkungan ke file sementara: {temp_key_file_path}")
+        except Exception as e:
+            print(f"❌ Gagal memuat kredensial Akun Layanan dari variabel lingkungan: {e}")
+    else:
+        print("Peringatan: Variabel lingkungan GOOGLE_APPLICATION_CREDENTIALS_JSON tidak ditemukan. Mengandalkan kredensial default lingkungan.")
+        
+_setup_google_credentials()
 
 def generate(label, age, history_summary):
   client = genai.Client(
       vertexai=True,
-      project="330163298455",
-      location="us-central1",
+      project=GOOGLE_CLOUD_PROJECT_ID,
+      location=GOOGLE_CLOUD_REGION,
   )
   prompt_text=""f"Anda adalah asisten AI yang ahli dalam memberikan rekomendasi perawatan bayi berdasarkan penyebab tangisan. Bayi menangis adalah hal yang normal, dan setiap tangisan memiliki arti. Tujuan Anda adalah memberikan rekomendasi yang lembut dan efektif kepada orang tua baru.Penyebab tangisan bayi saat ini terklasifikasi sebagai: {label}.Usia bayi saat ini adalah: {age}.Berdasarkan riwayat tangisan sebelumnya:{history_summary}.Berdasarkan informasi di atas, berikan beberapa rekomendasi treatment yang bisa dilakukan orang tua baru untuk mengatasi tangisan ini. Prioritaskan rekomendasi yang paling umum dan relevan dengan pola yang teridentifikasi. Sajikan rekomendasi dan penjelasannya dalam bentuk satu paragraf singkat"""
   msg1_text1 = types.Part.from_text(text=prompt_text)
-  model = "projects/330163298455/locations/us-central1/endpoints/598359725393838080"
+  model = VERTEX_AI_MODEL_ENDPOINT
   contents = [
     types.Content(
       role="user",
