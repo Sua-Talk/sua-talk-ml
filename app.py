@@ -8,6 +8,7 @@ from datetime import datetime
 import psutil
 from utils.ai_insights import generate
 from utils.preprocessing import *
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +37,8 @@ except Exception as e:
 
 # Define class labels based on your working code
 CLASS_LABELS = ['sakit perut', 'kembung', 'tidak nyaman', 'lapar', 'lelah']
+
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -119,32 +122,40 @@ def get_classes():
         'total_classes': len(CLASS_LABELS)
     })
 
-# # --- Database Helper ---
-# def log_cry_event(predicted_label, confidence, timestamp):
-#     conn = sqlite3.connect('database/cry_history.db')
-#     cursor = conn.cursor()
-#     cursor.execute('''CREATE TABLE IF NOT EXISTS cry_events (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT,
-#         label TEXT, confidence REAL, timestamp TEXT)''')
-#     cursor.execute("INSERT INTO cry_events (label, confidence, timestamp) VALUES (?, ?, ?)",
-#                    (predicted_label, confidence, timestamp))
-#     conn.commit()
-#     conn.close()
-
-# def get_cry_history():
-#     conn = sqlite3.connect('database/cry_history.db')
-#     cursor = conn.cursor()
-#     cursor.execute("SELECT label, confidence, timestamp FROM cry_events ORDER BY timestamp DESC LIMIT 100")
-#     rows = cursor.fetchall()
-#     conn.close()
-#     return [{"label": r[0], "confidence": r[1], "timestamp": r[2]} for r in rows]
-
 @app.route('/predict', methods=['POST'])
+def calculate_baby_age(date_of_birth_str):
+    # Format date_of_birth_str: "YYYY-MM-DD"
+    dob = datetime.strptime(date_of_birth_str, "%Y-%m-%d")
+    today = datetime.today()
+    delta = today - dob
+    # Hitung umur dalam bulan dan hari
+    months = delta.days // 30
+    days = delta.days % 30
+    if months > 0:
+        return f"{months} bulan {days} hari"
+    else:
+        return f"{days} hari"
+    
+def get_baby_profile(baby_id):
+    url = f"https://api.suatalk.site/babies/{baby_id}"
+    try:
+        resp = requests.get(url, timeout=5)
+        data = resp.json()
+        if data.get("success") and data.get("data"):
+            return data["data"]
+        return None
+    except Exception:
+        return None
+    
 def predict():
     """Predict infant cry classification"""
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 503
     
+    baby_id = request.form.get('baby_id') or request.json.get('baby_id') if request.is_json else None
+    if not baby_id:
+        return jsonify({'error': 'baby_id wajib disertakan'}), 400
+
     # Check if file is present (supporting both 'audio' and 'file' keys)
     file = None
     if 'audio' in request.files:
@@ -183,13 +194,19 @@ def predict():
             confidence = float(prediction[0][predicted_class_idx])
             predicted_class = CLASS_LABELS[predicted_class_idx]
 
-            # log_cry_event(predicted_class, confidence, datetime.datetime.now().isoformat())
-            baby_age='3 bulan'
-            summary_dummy=f' Untuk penyebab {predicted_class} , riwayat menunjukkan bahwa ini paling sering terjadi antara pukul **18:00 - 21:00** (terjadi 35 kali). Tangisan saat ini terjadi pada pukul 19:30, yang berada dalam rentang waktu yang sering terjadi.'
+            baby_profile = get_baby_profile(baby_id)
+            if not baby_profile:
+                return jsonify({'error': 'baby profile not found'}), 404
+            age = calculate_baby_age(baby_profile["dateOfBirth"])
+            
+            # Dummy data for testing
+            # age = "3 bulan 10 hari"
+
+            #  label, age, baby_id
             ai_recommendation = generate(
                 label=predicted_class,
-                age=baby_age,
-                history_summary = summary_dummy
+                age=age,
+                baby_id=baby_id,
             )
             
             return jsonify({
@@ -236,13 +253,6 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
-
-# # --- Simple Dashboard ---
-# @app.route('/')
-# def dashboard():
-#     history = get_cry_history()
-#     insights = generate_ai_insights(history)
-#     return render_template('dashboard.html', history=history, insights=insights)
 
 if __name__ == '__main__':
     print(f"🚀 Starting SuaTalk ML API")
