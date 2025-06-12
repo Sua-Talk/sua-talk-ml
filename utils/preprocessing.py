@@ -1,7 +1,9 @@
 import librosa
 import numpy as np
-import datetime
 import requests
+from datetime import datetime, timezone, timedelta
+import pandas as pd
+
 
 # Audio processing constants (matching your working code)
 SAMPLE_RATE = 16000
@@ -61,7 +63,7 @@ def extract_features(file_path):
 
 def calculate_baby_age(date_of_birth_str):
     # Format date_of_birth_str: "YYYY-MM-DD"
-    dob = datetime.strptime(date_of_birth_str, "%Y-%m-%d")
+    dob = datetime.strptime(date_of_birth_str, "%Y%m%d")
     today = datetime.today()
     delta = today - dob
     # Hitung umur dalam bulan dan hari
@@ -72,13 +74,37 @@ def calculate_baby_age(date_of_birth_str):
     else:
         return f"{days} hari"
     
-def get_baby_profile(baby_id):
-    url = f"https://api.suatalk.site/babies/{baby_id}"
+    
+def get_baby_history_summary(records, days=30):
     try:
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-        if data.get("success") and data.get("data"):
-            return data["data"]
-        return None
-    except Exception:
-        return None
+        if not records:
+            return "Riwayat tangisan tidak tersedia."
+        df = pd.DataFrame(records)
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        last_month = datetime.now(timezone.utc) - timedelta(days=days)
+        df = df[df['Timestamp'] >= last_month]
+        if df.empty or 'prediction' not in df.columns:
+            return f"Riwayat tangisan {days} hari terakhir tidak tersedia."
+
+        # Distribusi label prediksi
+        pred_counts = df['prediction'].value_counts(normalize=True).sort_values(ascending=False)
+        distribusi_label = ', '.join([f"{label}: {pct*100:.1f}%" for label, pct in pred_counts.items()])
+
+        # Pola waktu per label
+        pola_jam_per_label = []
+        for label in pred_counts.index:
+            df_label = df[df['prediction'] == label]
+            if not df_label.empty:
+                top_hours = df_label['Timestamp'].dt.hour.value_counts().nlargest(2)
+                jam_rinci = ', '.join([f"{jam}:00 ({count} kali)" for jam, count in top_hours.items()])
+                pola_jam_per_label.append(f"{label}: {jam_rinci}")
+        pola_jam_per_label_str = '; '.join(pola_jam_per_label)
+
+        summary = (f"Selama {days} hari terakhir, distribusi penyebab tangisan bayi adalah: {distribusi_label}. "
+                   f"Pola jam per label: {pola_jam_per_label_str}.")
+        return summary
+
+    except Exception as e:
+        return "Riwayat tangisan tidak tersedia.dengan error" , e
+    
+

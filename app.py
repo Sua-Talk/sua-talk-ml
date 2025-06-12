@@ -4,18 +4,18 @@ import tensorflow as tf
 from flask import Flask, request, jsonify
 import tempfile
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime # Import timezone separately for clarity
 import psutil
 from utils.ai_insights import generate
 from utils.preprocessing import *
-import requests
+import json
 
 # Load environment variables
 load_dotenv()
 app = Flask(__name__)
 
 # Configuration from environment variables
-MODEL_PATH = os.getenv('MODEL_PATH', 'classification_model/classifier_model.h5')
+MODEL_PATH = os.getenv('MODEL_PATH', 'classification_model/classifier_model.keras')
 PORT = int(os.getenv('PORT', 5000))
 MAX_REQUEST_SIZE = os.getenv('MAX_REQUEST_SIZE', '50MB')
 CORS_ORIGIN = os.getenv('CORS_ORIGIN', '*')
@@ -38,8 +38,6 @@ except Exception as e:
 # Define class labels based on your working code
 CLASS_LABELS = ['sakit perut', 'kembung', 'tidak nyaman', 'lapar', 'lelah']
 
-
-
 @app.route('/health', methods=['GET'])
 def health_check():
     """Enhanced health check endpoint for CapRover zero-downtime deployment"""
@@ -49,7 +47,7 @@ def health_check():
             return jsonify({
                 'status': 'unhealthy',
                 'reason': 'model not loaded',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp':datetime.utcnow().isoformat()
             }), 500
         
         # Check memory usage
@@ -61,7 +59,7 @@ def health_check():
                 'status': 'unhealthy',
                 'reason': 'high memory usage',
                 'memory_percent': memory_percent,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp':datetime.utcnow().isoformat()
             }), 500
         
         # Check disk usage
@@ -73,13 +71,13 @@ def health_check():
                 'status': 'unhealthy',
                 'reason': 'high disk usage',
                 'disk_percent': disk_percent,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp':datetime.utcnow().isoformat()
             }), 500
         
         # All checks passed
         return jsonify({
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp':datetime.utcnow().isoformat(),
             'model_loaded': True,
             'model_path': MODEL_PATH,
             'model_loaded_time': model_loaded_time.isoformat() if model_loaded_time else None,
@@ -97,7 +95,7 @@ def health_check():
         return jsonify({
             'status': 'unhealthy',
             'reason': f'health check error: {str(e)}',
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp':datetime.utcnow().isoformat()
         }), 500
 
 @app.route('/ready', methods=['GET'])
@@ -111,7 +109,7 @@ def readiness_check():
     
     return jsonify({
         'ready': True,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp':datetime.utcnow().isoformat()
     }), 200
 
 @app.route('/classes', methods=['GET'])
@@ -122,18 +120,26 @@ def get_classes():
         'total_classes': len(CLASS_LABELS)
     })
 
-@app.route('/predict', methods=['POST'])
-
-    
+@app.route('/predict', methods=['POST'])    
 def predict():
     """Predict infant cry classification"""
     if model is None:
         return jsonify({'error': 'Model not loaded'}), 503
     
-    baby_id = request.form.get('baby_id') or request.json.get('baby_id') if request.is_json else None
-    if not baby_id:
-        return jsonify({'error': 'baby_id wajib disertakan'}), 400
+    if request.is_json:
+        date_of_birth_str = request.json.get('date_of_birth')
+        baby_id = request.json.get('baby_id')
+        history_data = request.json.get('history_data')
+        
+    else:
+        date_of_birth_str = request.form.get('date_of_birth')
+        baby_id = request.form.get('baby_id')
+        history_raw = request.form.get('history_data')
+        history_data = json.loads(history_raw) if history_raw else []
+    if not date_of_birth_str:
+        return jsonify({'error': 'date_of_birth wajib disertakan dari backend'}), 400
 
+    
     # Check if file is present (supporting both 'audio' and 'file' keys)
     file = None
     if 'audio' in request.files:
@@ -153,7 +159,7 @@ def predict():
         return jsonify({
             'error': f'Unsupported audio format. Allowed: {", ".join(ALLOWED_AUDIO_FORMATS)}'
         }), 400
-    
+
     tmp_file_path = None
     try:
         # Save uploaded file temporarily using secure approach
@@ -171,20 +177,17 @@ def predict():
             predicted_class_idx = int(np.argmax(prediction[0]))
             confidence = float(prediction[0][predicted_class_idx])
             predicted_class = CLASS_LABELS[predicted_class_idx]
-
-            baby_profile = get_baby_profile(baby_id)
-            if not baby_profile:
-                return jsonify({'error': 'baby profile not found'}), 404
-            age = calculate_baby_age(baby_profile["dateOfBirth"])
-            
-            # Dummy data for testing
-            # age = "3 bulan 10 hari"
-
+            print(date_of_birth_str)
+            age = calculate_baby_age(date_of_birth_str)
+            print(age)
+            print(history_data)
+            history_summary = get_baby_history_summary(history_data)
+            print(history_summary)
             #  label, age, baby_id
             ai_recommendation = generate(
                 label=predicted_class,
                 age=age,
-                baby_id=baby_id,
+                history_summary=history_summary,
             )
             
             return jsonify({
