@@ -9,8 +9,6 @@ Original file is located at
 ## Load Data
 """
 
-!git clone https://github.com/gveres/donateacry-corpus.git
-
 # File and system operations
 import os
 import random
@@ -54,21 +52,6 @@ random.seed(42)
 tf.keras.utils.set_random_seed(42)
 tf.config.experimental.enable_op_determinism()
 
-base_path = 'donateacry-corpus/donateacry_corpus_cleaned_and_updated_data'
-
-for label in os.listdir(base_path):
-    path = os.path.join(base_path, label)
-    if os.path.isdir(path):
-        num_files = len(os.listdir(path))
-        print(f"{label}: {num_files} files")
-    else:
-        print(f"{label} is a file, not a directory. Deleting...")
-        os.remove(path)
-
-""""Terlihat bahwa ada imbalanced yang cukup kuat. Label hungry mendominasi sendiri. Maka kita perlu lakukan augmentasi data pada 4 label lainnya."
-
-## Data Augmentation
-"""
 
 SAMPLE_RATE = 16000
 def load_audio(file_path, sr=SAMPLE_RATE):
@@ -115,61 +98,6 @@ AUGMENTATION_FUNCTIONS = [
     (add_white_noise, "noise"),
     (audio_slice, "slice")
 ]
-
-def augment_data(data_path, output_dir, p):
-    audio, sr = load_audio(data_path)
-    base_filename = os.path.splitext(os.path.basename(data_path))[0]
-
-    for i in range(p):
-        aug_func, aug_name = random.choice(AUGMENTATION_FUNCTIONS)
-        augmented_audio = aug_func(audio, sr)
-
-        output_filename = f"{base_filename}_{aug_name}_{i+1}.wav"
-        output_file_path = os.path.join(output_dir, output_filename)
-
-        save_audio(augmented_audio, sr=16000, output_file_path=output_file_path)
-
-for label in os.listdir(base_path):
-  path = os.path.join(base_path, label)
-  if os.path.isdir(path):
-    label_path = path
-    if label!='hungry':
-      for file in os.listdir(path):
-        file_path=os.path.join(label_path, file)
-        augment_data(file_path, label_path, 17)
-
-base_path = 'donateacry-corpus/donateacry_corpus_cleaned_and_updated_data'
-
-for label in os.listdir(base_path):
-    path = os.path.join(base_path, label)
-    if os.path.isdir(path):
-        num_files = len(os.listdir(path))
-        print(f"{label}: {num_files} files")
-    else:
-        print(f"{label} is a file, not a directory")
-
-"""## Data Resizing"""
-
-def trim_or_pad(audio, sr, target_duration=6.0):
-    target_length = int(sr * target_duration)
-    if len(audio) > target_length:
-        start = (len(audio) - target_length) // 2
-        audio = audio[start:start + target_length]
-    elif len(audio) < target_length:
-        pad_length = target_length - len(audio)
-        pad_left = pad_length // 2
-        pad_right = pad_length - pad_left
-        audio = np.pad(audio, (pad_left, pad_right), mode='constant')
-    return audio
-
-for label in os.listdir(base_path):
-    path = os.path.join(base_path, label)
-    if os.path.isdir(path):
-        for file in os.listdir(path):
-            file_path = os.path.join(path, file)
-            audio, sr = load_audio(file_path)
-            processed_audio = trim_or_pad(audio, sr=16000, target_duration=6.0)
-            save_audio(processed_audio, sr=16000, output_file_path=file_path)
 
 """## Feature Extraction"""
 
