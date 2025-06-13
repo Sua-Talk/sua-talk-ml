@@ -13,4 +13,6 @@ scipy==1.13.1
 gunicorn
 psutil
 google-genai
-
+google-auth
+vertexai
+pandas
