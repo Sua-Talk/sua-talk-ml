@@ -8,6 +8,9 @@ Original file is located at
 
 ## Load Data
 """
+
+!git clone https://github.com/gveres/donateacry-corpus.git
+
 # File and system operations
 import os
 import random
@@ -31,6 +34,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, InputLayer
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 # Visualization
 import matplotlib.pyplot as plt
@@ -45,10 +49,10 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
 os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 
-
 np.random.seed(42)
 random.seed(42)
-tf.random.set_seed(42)
+tf.keras.utils.set_random_seed(42)
+tf.config.experimental.enable_op_determinism()
 
 base_path = 'donateacry-corpus/donateacry_corpus_cleaned_and_updated_data'
 
@@ -71,7 +75,6 @@ def load_audio(file_path, sr=SAMPLE_RATE):
     """Loads an audio file."""
     audio, sr = librosa.load(file_path, sr=sr)
     return audio, sr
-
 
 def save_audio(audio, output_file_path, sr = SAMPLE_RATE):
     """Saves an audio file."""
@@ -113,27 +116,27 @@ AUGMENTATION_FUNCTIONS = [
     (audio_slice, "slice")
 ]
 
-# def augment_data(data_path, output_dir, p):
-#     audio, sr = load_audio(data_path)
-#     base_filename = os.path.splitext(os.path.basename(data_path))[0]
+def augment_data(data_path, output_dir, p):
+    audio, sr = load_audio(data_path)
+    base_filename = os.path.splitext(os.path.basename(data_path))[0]
 
-#     for i in range(p):
-#         aug_func, aug_name = random.choice(AUGMENTATION_FUNCTIONS)
-#         augmented_audio = aug_func(audio, sr)
+    for i in range(p):
+        aug_func, aug_name = random.choice(AUGMENTATION_FUNCTIONS)
+        augmented_audio = aug_func(audio, sr)
 
-#         output_filename = f"{base_filename}_{aug_name}_{i+1}.wav"
-#         output_file_path = os.path.join(output_dir, output_filename)
+        output_filename = f"{base_filename}_{aug_name}_{i+1}.wav"
+        output_file_path = os.path.join(output_dir, output_filename)
 
-#         save_audio(augmented_audio, sr=16000, output_file_path=output_file_path)
+        save_audio(augmented_audio, sr=16000, output_file_path=output_file_path)
 
-# for label in os.listdir(base_path):
-#   path = os.path.join(base_path, label)
-#   if os.path.isdir(path):
-#     label_path = path
-#     if label!='hungry':
-#       for file in os.listdir(path):
-#         file_path=os.path.join(label_path, file)
-#         augment_data(file_path, label_path, 17)
+for label in os.listdir(base_path):
+  path = os.path.join(base_path, label)
+  if os.path.isdir(path):
+    label_path = path
+    if label!='hungry':
+      for file in os.listdir(path):
+        file_path=os.path.join(label_path, file)
+        augment_data(file_path, label_path, 17)
 
 base_path = 'donateacry-corpus/donateacry_corpus_cleaned_and_updated_data'
 
@@ -144,7 +147,6 @@ for label in os.listdir(base_path):
         print(f"{label}: {num_files} files")
     else:
         print(f"{label} is a file, not a directory")
-
 
 """## Data Resizing"""
 
@@ -226,7 +228,7 @@ labels = le.fit_transform(labels)
 labels = to_categorical(labels, num_classes=5)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    features, labels, test_size=0.15, random_state=42, stratify=labels)
+    features, labels, test_size=0.1, random_state=42, stratify=labels)
 
 input_shape=(X_train.shape[1],)
 num_classes=5
@@ -257,13 +259,30 @@ model_ANN = Sequential([
     Dense(num_classes, activation='softmax')
 ])
 
+callbacks = [
+    EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        restore_best_weights=True,
+        verbose=1
+    ),
+    # ReduceLROnPlateau(
+    #     monitor='val_loss',
+    #     factor=0.5,
+    #     patience=5,
+    #     min_lr=1e-6,
+    #     verbose=1
+    # )
+]
+
+
 model_ANN.compile(optimizer='adam',
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
 model_ANN.summary()
 
-history_ANN=model_ANN.fit(X_train, y_train, epochs=100, batch_size=32, validation_split=0.1, shuffle=False)
+history_ANN=model_ANN.fit(X_train, y_train, epochs=300, batch_size=32, validation_split=0.1)
 
 y_pred=np.argmax(model_ANN.predict(X_test), axis=1)
 y_true=np.argmax(y_test, axis=1)
@@ -312,5 +331,4 @@ plt.legend(loc="lower right")
 plt.show()
 
 model_ANN.save('classifier_model.h5')
-
 model_ANN.save('classifier_model.keras')
