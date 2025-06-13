@@ -139,7 +139,6 @@ def predict():
     if not date_of_birth_str:
         return jsonify({'error': 'date_of_birth wajib disertakan dari backend'}), 400
 
-    
     # Check if file is present (supporting both 'audio' and 'file' keys)
     file = None
     if 'audio' in request.files:
@@ -177,13 +176,10 @@ def predict():
             predicted_class_idx = int(np.argmax(prediction[0]))
             confidence = float(prediction[0][predicted_class_idx])
             predicted_class = CLASS_LABELS[predicted_class_idx]
-            print(date_of_birth_str)
             age = calculate_baby_age(date_of_birth_str)
-            print(age)
-            print(history_data)
             history_summary = get_baby_history_summary(history_data)
-            print(history_summary)
-            #  label, age, baby_id
+            
+            #  label, age, history_summary
             ai_recommendation = generate(
                 label=predicted_class,
                 age=age,
@@ -198,7 +194,9 @@ def predict():
                     for i in range(len(CLASS_LABELS))
                 },
                 'feature_shape': features.shape,
-                'ai-recommendation' : ai_recommendation
+                'ai-recommendation' : ai_recommendation,
+                'history_summary' : history_summary,
+                'age' : age
             })
             
     except Exception as e:

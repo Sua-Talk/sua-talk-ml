@@ -1,56 +1,25 @@
 import os
-import tempfile
-
 from dotenv import load_dotenv
-
 from google import genai
 from google.genai import types
 
 
 load_dotenv()
 
+#Load Variabel Lingkungan
 GOOGLE_CLOUD_PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT')
 GOOGLE_CLOUD_REGION = os.getenv('GOOGLE_CLOUD_REGION')
 VERTEX_AI_MODEL_ENDPOINT = os.getenv('VERTEX_AI_MODEL_ENDPOINT')
 
 
-# def _setup_google_credentials():
-#     service_account_info_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
-#     if service_account_info_json:
-#         try:
-#             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_key_file:
-#                 temp_key_file.write(service_account_info_json)
-#                 temp_key_file_path = temp_key_file.name
-#             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = temp_key_file_path
-#             print(f"✅ Kredensial Akun Layanan dimuat dari variabel lingkungan ke file sementara: {temp_key_file_path}")
-#         except Exception as e:
-#             print(f"❌ Gagal memuat kredensial Akun Layanan dari variabel lingkungan: {e}")
-#     else:
-#         print("Peringatan: Variabel lingkungan GOOGLE_APPLICATION_CREDENTIALS_JSON tidak ditemukan. Mengandalkan kredensial default lingkungan.")
-        
-# _setup_google_credentials()
-
-def setup_vertex():
-    import os
-    import vertexai
-
-    if os.environ.get("ENV") != "production":
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./service_account.json"
-
-    vertexai.init(project=GOOGLE_CLOUD_PROJECT_ID, location=GOOGLE_CLOUD_REGION)
-
-setup_vertex()
-
 def generate(label, age, history_summary):
+    """ Fungsi untuk menggenerate rekomendasi dari vertex AI.
+    """
     client = genai.Client(
       vertexai=True,
       project=GOOGLE_CLOUD_PROJECT_ID,
       location=GOOGLE_CLOUD_REGION,
   )
-    """
-    Generate a care recommendation using Vertex AI, automatically fetching history for the baby_id.
-    """
-    
     prompt_text = (
         f"Anda adalah asisten AI yang ahli dalam memberikan rekomendasi perawatan bayi berdasarkan penyebab tangisan. "
         f"Bayi menangis adalah hal yang normal, dan setiap tangisan memiliki arti. Tujuan Anda adalah memberikan rekomendasi "
@@ -89,5 +58,3 @@ def generate(label, age, history_summary):
     ):
         output_chunks.append(chunk.text)
     return ''.join(output_chunks)
-
-print(generate('sakit perut', ' 2 months', 'no ratings'))
