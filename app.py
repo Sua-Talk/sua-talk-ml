@@ -200,7 +200,10 @@ def predict():
             })
             
     except Exception as e:
-        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+        # Convert exception to string and handle any serialization issues
+        error_message = str(e) if hasattr(e, '__str__') else f"Unknown error: {type(e).__name__}"
+        print(f"Prediction error: {error_message}")
+        return jsonify({'error': f'Prediction failed: {error_message}'}), 500
     
     finally:
         # Clean up temporary file

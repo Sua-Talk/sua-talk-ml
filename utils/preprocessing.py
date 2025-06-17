@@ -62,17 +62,32 @@ def extract_features(file_path):
         return None
 
 def calculate_baby_age(date_of_birth_str):
-    # Format date_of_birth_str: "YYYY-MM-DD"
-    dob = datetime.strptime(date_of_birth_str, "%Y%m%d")
-    today = datetime.today()
-    delta = today - dob
-    # Hitung umur dalam bulan dan hari
-    months = delta.days // 30
-    days = delta.days % 30
-    if months > 0:
-        return f"{months} bulan {days} hari"
-    else:
-        return f"{days} hari"
+    """Calculate baby age from date of birth string"""
+    try:
+        # Handle multiple date formats
+        if 'T' in date_of_birth_str:
+            # ISO 8601 format: "2024-01-15T00:00:00.000Z"
+            dob = datetime.fromisoformat(date_of_birth_str.replace('Z', '+00:00'))
+        elif '-' in date_of_birth_str:
+            # Date format: "YYYY-MM-DD"
+            dob = datetime.strptime(date_of_birth_str, "%Y-%m-%d")
+        else:
+            # Compact format: "YYYYMMDD"
+            dob = datetime.strptime(date_of_birth_str, "%Y%m%d")
+        
+        today = datetime.today()
+        delta = today - dob.replace(tzinfo=None)  # Remove timezone for comparison
+        
+        # Hitung umur dalam bulan dan hari
+        months = delta.days // 30
+        days = delta.days % 30
+        if months > 0:
+            return f"{months} bulan {days} hari"
+        else:
+            return f"{days} hari"
+    except Exception as e:
+        print(f"Error parsing date_of_birth: {date_of_birth_str}, error: {e}")
+        return "Umur tidak dapat dihitung"
     
     
 def get_baby_history_summary(records, days=30):
@@ -105,6 +120,7 @@ def get_baby_history_summary(records, days=30):
         return summary
 
     except Exception as e:
-        return "Riwayat tangisan tidak tersedia.dengan error" , e
+        print(f"Error processing baby history: {e}")
+        return "Riwayat tangisan tidak tersedia karena error dalam pemrosesan data."
     
 
