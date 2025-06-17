@@ -16,3 +16,4 @@ google-genai
 google-auth
 vertexai
 pandas
+soundfile
